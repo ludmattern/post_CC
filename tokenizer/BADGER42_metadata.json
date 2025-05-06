@@ -1,0 +1,15 @@
+{
+  "name": "BADGER42",
+  "description": "Yes he's cooking.",
+  "image": "ipfs://bafybeiagg5v525h4nlidvm5ir7dcpfgvxyalekmxsvdss5mpv6lxciwese",
+  "attributes": [
+    {
+      "trait_type": "Number",
+      "value": 42
+    },
+    {
+      "trait_type": "Artist",
+      "value": "lmattern42"
+    }
+  ]
+}
