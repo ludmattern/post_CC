@@ -1,0 +1,19 @@
+# Ignore build directory
+/build/
+/build/*
+
+# Ignore generated kid files
+*_kid.c
+*_kid.s
+
+# Ignore temporary output files
+*_output.txt
+
+# Object files
+*.o
+
+# Executables
+/C/Colleen
+/C/Grace
+/ASM/Colleen
+/ASM/Grace
