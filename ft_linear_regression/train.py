@@ -54,6 +54,11 @@ def train_model(data_file):
 	if len(set(mileage)) < 2 or len(set(price)) < 2:
 		print("Erreur: Les données de kilométrage ou de prix ne contiennent pas assez de variations.")
 		return None, None
+
+	# Verifier si toutes les valeurs sont positives
+	if any(x < 0 for x in mileage) or any(x < 0 for x in price):
+		print("Erreur: Les valeurs de kilométrage ou de prix ne peuvent pas être négatives.")
+		return None, None
  
 	print(f"Données chargées : {len(mileage)} échantillons")
  
