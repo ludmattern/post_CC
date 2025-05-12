@@ -1,19 +1,26 @@
-# Ignore build directory
-/build/
-/build/*
+# Ignorer les fichiers générés par les programmes
+C/build/
+C/Grace_kid.c
+C/Sully_*
+C/Colleen_output.txt
 
-# Ignore generated kid files
-*_kid.c
-*_kid.s
+ASM/build/
+ASM/Grace_kid.s
+ASM/Sully_*
+ASM/Colleen_output.txt
 
-# Ignore temporary output files
-*_output.txt
-
-# Object files
+# Ignorer les fichiers objets
 *.o
 
-# Executables
-/C/Colleen
-/C/Grace
-/ASM/Colleen
-/ASM/Grace
+# Ignorer les exécutables générés
+C/Colleen
+C/Grace
+C/Sully
+ASM/Colleen
+ASM/Grace
+ASM/Sully
+
+# Ignorer les fichiers temporaires
+*~
+*.swp
+.DS_Store
