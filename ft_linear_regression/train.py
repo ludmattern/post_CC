@@ -12,14 +12,18 @@ def estimate_price(mileage, theta0, theta1):
 	return theta0 + (theta1 * mileage)
 
 def mean(values):
-	"""Calcule la moyenne d'une liste de valeurs."""
-	return sum(values) / len(values)
+    """Calcule la moyenne d'une liste de valeurs."""
+    if not values:
+        return 0
+    return sum(values) / len(values)
 
 def std_dev(values):
-	"""Calcule l'écart type d'une liste de valeurs."""
-	m = mean(values)
-	variance = sum((x - m) ** 2 for x in values) / len(values)
-	return variance ** 0.5  # Racine carrée
+    """Calcule l'écart type d'une liste de valeurs."""
+    if not values:
+        return 1
+    m = mean(values)
+    variance = sum((x - m) ** 2 for x in values) / len(values)
+    return max(variance ** 0.5, 1e-10)
 
 def train_model(data_file):
 	"""Entraîne un modèle de régression linéaire sur les données."""
@@ -36,9 +40,23 @@ def train_model(data_file):
 	except Exception as e:
 		print(f"Erreur lors du chargement des données: {e}")
 		return None, None
+
+	# Vérifier si les données sont suffisantes
+	if len(mileage) < 2:
+		print("Erreur: Pas assez de données pour l'entraînement.")
+		return None, None
+	# Vérifier si les données sont valides
+	if len(mileage) != len(price):
+		print("Erreur: Les données de kilométrage et de prix ne correspondent pas.")
+		return None, None
 	
+	# Veritifer si il y a au moins 2 paires de valeurs différentes
+	if len(set(mileage)) < 2 or len(set(price)) < 2:
+		print("Erreur: Les données de kilométrage ou de prix ne contiennent pas assez de variations.")
+		return None, None
+ 
 	print(f"Données chargées : {len(mileage)} échantillons")
-	
+ 
 	# Normalisation des données
 	mileage_mean = mean(mileage)
 	mileage_std = std_dev(mileage)
@@ -129,4 +147,11 @@ def train_model(data_file):
 
 if __name__ == "__main__":
 	data_file = "data.csv"
+	# Vérifier si le fichier de données existe
+	try:
+		with open(data_file, 'r') as f:
+			pass
+	except FileNotFoundError:
+		print(f"Erreur: Le fichier {data_file} n'existe pas.")
+		exit(1)
 	train_model(data_file)
