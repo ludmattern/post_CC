@@ -42,6 +42,10 @@ main:
 	mov rdx, r12
 	call sprintf
 
+	; Check if counter is negative
+	cmp r12, 0
+	jl .exit
+
 	mov rax, 2
 	lea rdi, [rel fname_buf]
 	mov rsi, 0x241
