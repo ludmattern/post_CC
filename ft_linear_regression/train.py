@@ -1,162 +1,285 @@
 #!/usr/bin/env python3
-import csv
+"""
+Linear regression with automatic hyperparameter optimization.
+Implements the formula: estimatePrice(mileage) = θ₀ + (θ₁ * mileage)
+"""
+
 import json
 import matplotlib.pyplot as plt
+import numpy as np
+from utils import load_data
 
-# Paramètres d'apprentissage
-learning_rate = 0.1
-n_iterations = 100000
 
-def estimate_price(mileage, theta0, theta1):
-	"""Calcule le prix estimé selon le modèle linéaire."""
-	return theta0 + (theta1 * mileage)
+class ManualScaler:
+    """Manual implementation of data normalization to avoid sklearn dependency."""
 
-def mean(values):
-    """Calcule la moyenne d'une liste de valeurs."""
-    if not values:
-        return 0
-    return sum(values) / len(values)
+    def __init__(self):
+        self.mean_ = None
+        self.std_ = None
 
-def std_dev(values):
-    """Calcule l'écart type d'une liste de valeurs."""
-    if not values:
-        return 1
-    m = mean(values)
-    variance = sum((x - m) ** 2 for x in values) / len(values)
-    return max(variance ** 0.5, 1e-10)
+    def fit_transform(self, X):
+        """Fit the scaler and transform the data."""
+        self.mean_ = np.mean(X)
+        self.std_ = np.std(X)
+        if self.std_ == 0:
+            self.std_ = 1
+        return (X - self.mean_) / self.std_
+
+    def inverse_transform(self, X):
+        """Transform normalized data back to original scale."""
+        return X * self.std_ + self.mean_
+
+
+class LinearRegression:
+    """Linear regression model using gradient descent with normalization."""
+
+    def __init__(self, learning_rate=0.5, n_iterations=1000):
+        """Initialize the model with hyperparameters."""
+        if learning_rate <= 0:
+            raise ValueError("Learning rate must be positive")
+        if learning_rate > 1.0:
+            print(f"High learning rate ({learning_rate}), risk of divergence")
+
+        self.learning_rate = learning_rate
+        self.n_iterations = n_iterations
+        self.theta0 = self.theta1 = 0.0
+        self.scaler_x = ManualScaler()
+        self.scaler_y = ManualScaler()
+        self.cost_history = []
+        self.theta_history = []
+
+    def _normalize_data(self, X, y):
+        """Normalize input data using ManualScaler for numerical stability."""
+        X_norm = self.scaler_x.fit_transform(X)
+        y_norm = self.scaler_y.fit_transform(y)
+        return X_norm, y_norm
+
+    def _denormalize_parameters(self):
+        """Convert normalized parameters back to original scale."""
+        dummy_mileage = np.array([[0], [1]])
+        dummy_price = np.array([[self.theta0], [self.theta0 + self.theta1]])
+        original_mileage = self.scaler_x.inverse_transform(dummy_mileage)
+        original_price = self.scaler_y.inverse_transform(dummy_price)
+        theta1_final = (original_price[1][0] - original_price[0][0]) / (original_mileage[1][0] - original_mileage[0][0])
+        theta0_final = original_price[0][0] - theta1_final * original_mileage[0][0]
+        return theta0_final, theta1_final
+
+    def predict(self, X):
+        """Make predictions using current parameters (for normalized data)."""
+        return self.theta0 + (self.theta1 * X)
+
+    def fit(self, X, y, verbose=True):
+        """Train the model using gradient descent with automatic convergence detection."""
+        X_norm, y_norm = self._normalize_data(X, y)
+        m = len(X)
+        if verbose:
+            print(f"Training on {m} samples...")
+
+        prev_cost, tolerance = float("inf"), 1e-6
+
+        for i in range(self.n_iterations):
+            predictions = self.predict(X_norm)
+            errors = predictions - y_norm
+
+            # Gradient descent formulas: tmp_θ = learningRate * (1/m) * Σ(errors)
+            # np.mean() computes (1/m) * Σ automatically
+            tmp_theta0 = self.learning_rate * np.mean(errors)
+            tmp_theta1 = self.learning_rate * np.mean(errors * X_norm)
+            max_gradient = 1e6
+            tmp_theta0 = np.clip(tmp_theta0, -max_gradient, max_gradient)
+            tmp_theta1 = np.clip(tmp_theta1, -max_gradient, max_gradient)
+
+            self.theta0 -= tmp_theta0
+            self.theta1 -= tmp_theta1
+
+            if not (np.isfinite(self.theta0) and np.isfinite(self.theta1)):
+                if verbose:
+                    print(f"Divergence detected - LR too high: {self.learning_rate}")
+                raise ValueError("Numerical divergence")
+
+            cost = np.mean(errors**2) / 2
+            if not np.isfinite(cost):
+                if verbose:
+                    print("Infinite cost detected")
+                raise ValueError("Infinite cost")
+
+            self.cost_history.append(cost)
+
+            should_store = (
+                i == 0
+                or (i < 10 and i % 2 == 0)
+                or (i < 50 and i % 5 == 0)
+                or (i < 200 and i % 20 == 0)
+                or (i % 50 == 0)
+            )
+
+            if should_store:
+                current_theta0, current_theta1 = self._denormalize_parameters()
+                self.theta_history.append((i, current_theta0, current_theta1))
+
+            if abs(prev_cost - cost) < tolerance:
+                if verbose:
+                    print(f"Converged after {i + 1} iterations")
+                break
+            prev_cost = cost
+        else:
+            if verbose:
+                print(f"Completed {self.n_iterations} iterations")
+
+        self.theta0_final, self.theta1_final = self._denormalize_parameters()
+
+        final_iteration = len(self.cost_history) - 1
+        if not self.theta_history or self.theta_history[-1][0] != final_iteration:
+            self.theta_history.append((final_iteration, self.theta0_final, self.theta1_final))
+
+        return self
+
+    def predict_price(self, mileage):
+        """Predict price for given mileage using trained model (original scale)."""
+        return self.theta0_final + (self.theta1_final * mileage)
+
+    def save_model(self, filename="model_params.json"):
+        """Save trained model parameters to JSON file."""
+        params = {"theta0": float(self.theta0_final), "theta1": float(self.theta1_final)}
+        with open(filename, "w") as f:
+            json.dump(params, f, indent=2)
+
+    def plot_results(self, X, y):
+        """Plot training results: regression line, cost convergence, and training evolution."""
+        plt.figure(figsize=(20, 6))
+
+        plt.subplot(1, 3, 1)
+        plt.scatter(X, y, color="blue", label="Training Data", alpha=0.6)
+        line_x = np.linspace(np.min(X), np.max(X), 100)
+        plt.plot(line_x, self.predict_price(line_x), color="red", label="Linear regression", linewidth=2)
+        plt.xlabel("Mileage (km)")
+        plt.ylabel("Price")
+        plt.title("Linear Regression: Price vs Mileage")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+        plt.subplot(1, 3, 2)
+        plt.plot(self.cost_history, color="green", linewidth=2)
+        plt.xlabel("Iterations")
+        plt.ylabel("Cost (MSE/2)")
+        plt.title("Cost Convergence")
+        plt.grid(True, alpha=0.3)
+        plt.yscale("log")
+
+        plt.subplot(1, 3, 3)
+        plt.scatter(X, y, color="blue", alpha=0.6, s=30, label="Training Data", zorder=5)
+
+        colors = plt.cm.viridis(np.linspace(0, 1, len(self.theta_history)))
+
+        line_x = np.linspace(np.min(X), np.max(X), 100)
+
+        for i, (iteration, theta0, theta1) in enumerate(self.theta_history):
+            y_pred = theta0 + theta1 * line_x
+
+            alpha = 0.4 + 0.6 * (i / max(1, len(self.theta_history) - 1))
+            linewidth = 1 + 1.5 * (i / max(1, len(self.theta_history) - 1))
+
+            if i == 0:
+                label = f"Iter {iteration}: θ₀={theta0:.0f}, θ₁={theta1:.4f} (Start)"
+                style = "--"
+            elif i == len(self.theta_history) - 1:
+                label = f"Iter {iteration}: θ₀={theta0:.0f}, θ₁={theta1:.4f} (Final)"
+                style = "-"
+                linewidth += 1
+            else:
+                label = f"Iter {iteration}: θ₀={theta0:.0f}, θ₁={theta1:.4f}"
+                style = "-"
+
+            plt.plot(line_x, y_pred, color=colors[i], alpha=alpha, linewidth=linewidth, linestyle=style, label=label, zorder=3)
+
+        plt.xlabel("Mileage (km)")
+        plt.ylabel("Price")
+        plt.title("Regression Line Over Time")
+
+        if len(self.theta_history) <= 8:
+            plt.legend(fontsize=7, loc="best")
+        else:
+            plt.legend([f"Start (iter {self.theta_history[0][0]})", f"Mid (iter {self.theta_history[len(self.theta_history) // 2][0]})", f"Final (iter {self.theta_history[-1][0]})"], fontsize=8, loc="best")
+
+        plt.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.show()
+
+
+def calculate_metrics(model, mileage, price):
+    """Calculate R² and MSE manually."""
+    predictions = np.array([model.predict_price(x) for x in mileage])
+
+    mse = np.mean((price - predictions) ** 2)
+
+    ss_total = np.sum((price - np.mean(price)) ** 2)
+    ss_residual = np.sum((price - predictions) ** 2)
+    r_squared = 1 - (ss_residual / ss_total) if ss_total != 0 else 0
+
+    return r_squared, mse, len(model.cost_history)
+
+
+def optimize_hyperparameters(mileage, price):
+    """Find optimal learning rate through grid search."""
+    learning_rates = [0.001, 0.01, 0.05, 0.1, 0.2, 0.5]
+    print("Optimizing hyperparameters...")
+
+    best_lr, best_score = 0.01, -1
+
+    for lr in learning_rates:
+        try:
+            model = LinearRegression(learning_rate=lr, n_iterations=1000)
+            model.fit(mileage, price, verbose=False)
+
+            r_squared, _, iterations = calculate_metrics(model, mileage, price)
+            score = r_squared + max(0, (1000 - iterations) / 1000 * 0.01)
+
+            if score > best_score:
+                best_score, best_lr = score, lr
+        except Exception:
+            continue
+
+    print(f"Best learning rate found: {best_lr} (Score = {best_score:.4f})")
+    return best_lr
+
 
 def train_model(data_file):
-	"""Entraîne un modèle de régression linéaire sur les données."""
-	# Charger les données
-	mileage = []
-	price = []
-	
-	try:
-		with open(data_file, 'r') as f:
-			reader = csv.DictReader(f)
-			for row in reader:
-				mileage.append(float(row['km']))
-				price.append(float(row['price']))
-	except Exception as e:
-		print(f"Erreur lors du chargement des données: {e}")
-		return None, None
+    """Train linear regression model with automatic hyperparameter optimization."""
+    mileage, price = load_data(data_file, for_training=True)
 
-	# Vérifier si les données sont suffisantes
-	if len(mileage) < 2:
-		print("Erreur: Pas assez de données pour l'entraînement.")
-		return None, None
-	# Vérifier si les données sont valides
-	if len(mileage) != len(price):
-		print("Erreur: Les données de kilométrage et de prix ne correspondent pas.")
-		return None, None
-	
-	# Veritifer si il y a au moins 2 paires de valeurs différentes
-	if len(set(mileage)) < 2 or len(set(price)) < 2:
-		print("Erreur: Les données de kilométrage ou de prix ne contiennent pas assez de variations.")
-		return None, None
+    if np.any(mileage < 0):
+        print("Negative mileage detected")
+    if np.any(price <= 0):
+        print("Negative or zero price detected")
 
-	# Verifier si toutes les valeurs sont positives
-	if any(x < 0 for x in mileage) or any(x < 0 for x in price):
-		print("Erreur: Les valeurs de kilométrage ou de prix ne peuvent pas être négatives.")
-		return None, None
- 
-	print(f"Données chargées : {len(mileage)} échantillons")
- 
-	# Normalisation des données
-	mileage_mean = mean(mileage)
-	mileage_std = std_dev(mileage)
-	mileage_normalized = [(x - mileage_mean) / mileage_std for x in mileage]
-	
-	# Initialisation des paramètres
-	theta0 = 0
-	theta1 = 0
-	m = len(mileage)  # Nombre d'échantillons
-	
-	# Historique pour visualisation
-	cost_history = []
-	
-	# Descente de gradient
-	print("Début de l'entraînement...")
-	for i in range(n_iterations):
-		# Calculer les prédictions et les erreurs
-		predictions = [estimate_price(x, theta0, theta1) for x in mileage_normalized]
-		errors = [predictions[j] - price[j] for j in range(m)]
-		
-		# Calculer les gradients temporaires
-		tmp_theta0 = learning_rate * (1/m) * sum(errors)
-		tmp_theta1 = learning_rate * (1/m) * sum(errors[j] * mileage_normalized[j] for j in range(m))
-		
-		# Mettre à jour les paramètres simultanément
-		theta0 -= tmp_theta0
-		theta1 -= tmp_theta1
-		
-		
-		# Calculer la fonction de coût (MSE)
-		cost = (1/(2*m)) * sum(e**2 for e in errors)
-		
-		# Calculer le cout previsionnel
-		if i > 0:
-			previous_cost = cost_history[-1] if cost_history else float('inf')
+    best_lr = optimize_hyperparameters(mileage, price)
+    print(f"Training model with learning rate {best_lr}...")
+    model = LinearRegression(learning_rate=best_lr, n_iterations=1000)
+    model.fit(mileage, price)
 
-		# Vérifier la divergence
-		if i > 0 and cost > previous_cost:
-			print(f"Erreur: Divergence détectée à l'itération {i}, coût: {cost}")
-			theta0 = 0
-			theta1 = 0
-			break
-  
-		if i > 0 and abs(cost - previous_cost) < 1e-6:
-			print(f"Convergence atteinte à l'itération {i}")
-			break
-		
-		cost_history.append(cost)
-		
-		# Afficher la progression
-		if i % 100 == 0:
-			print(f"Itération {i}, Coût: {cost}")
-	
-	# Dé-normalisation pour obtenir les vrais paramètres
-	theta1_denorm = theta1 / mileage_std
-	theta0_denorm = theta0 - theta1_denorm * mileage_mean
-	
-	# Sauvegarder les paramètres
-	params = {
-		'theta0': theta0_denorm,
-		'theta1': theta1_denorm
-	}
-	
-	with open('model_params.json', 'w') as f:
-		json.dump(params, f)
-	
-	print(f"Entraînement terminé - Thêta0: {theta0_denorm}, Thêta1: {theta1_denorm}")
-	
-	# Visualiser les données et la régression
-	plt.figure(figsize=(10, 6))
-	plt.scatter(mileage, price, color='blue', label='Données')
-	
-	# Générer les points pour la ligne de régression
-	min_mileage = min(mileage)
-	max_mileage = max(mileage)
-	line_x = [min_mileage, max_mileage]
-	line_y = [estimate_price(x, theta0_denorm, theta1_denorm) for x in line_x]
-	
-	plt.plot(line_x, line_y, color='red', label='Régression')
-	plt.xlabel('Kilométrage')
-	plt.ylabel('Prix')
-	plt.title('Régression linéaire: Prix vs Kilométrage')
-	plt.legend()
-	plt.savefig('regression_plot.png')
-	plt.show()
-	
-	return theta0_denorm, theta1_denorm
+    model.save_model()
+    model.plot_results(mileage, price)
+
+    return model.theta0_final, model.theta1_final
+
+
+def main():
+    """Main function to train the model and handle errors."""
+    try:
+        theta0, theta1 = train_model("data.csv")
+        print("\nTraining successful!")
+        print(f"Model parameters: θ₀ = {theta0:.6f}, θ₁ = {theta1:.6f}")
+        print("Parameters saved to model_params.json")
+        print("Use 'python evaluate.py' to calculate precision metrics.")
+        return 0
+    except FileNotFoundError:
+        print("File data.csv not found")
+        return 1
+    except Exception as e:
+        print(f"Training failed: {e}")
+        return 1
+
 
 if __name__ == "__main__":
-	data_file = "data.csv"
-	# Vérifier si le fichier de données existe
-	try:
-		with open(data_file, 'r') as f:
-			pass
-	except FileNotFoundError:
-		print(f"Erreur: Le fichier {data_file} n'existe pas.")
-		exit(1)
-	train_model(data_file)
+    exit(main())

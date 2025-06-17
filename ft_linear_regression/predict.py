@@ -1,43 +1,47 @@
 #!/usr/bin/env python3
-import json
+"""
+Price prediction script for linear regression model.
+Loads trained model parameters and predicts car prices based on mileage.
+"""
 
-
-def estimate_price(mileage, theta0, theta1):
-	"""Calcule le prix estimé selon le modèle linéaire."""
-	return theta0 + (theta1 * mileage)
-
-
-def load_model_params():
-	"""Charge les paramètres du modèle depuis le fichier JSON."""
-	try:
-		with open("model_params.json", "r") as f:
-			params = json.load(f)
-		return params
-	except FileNotFoundError:
-		print("Erreur: Fichier de paramètres non trouvé. Veuillez d'abord entraîner le modèle.")
-		return None
-	except Exception as e:
-		print(f"Erreur lors du chargement des paramètres: {e}")
-		return None
+from utils import estimate_price, load_model_params
 
 
 def predict():
-	"""Programme principal de prédiction."""
-	params = load_model_params()
-	if not params:
-		theta0 = 0
-		theta1 = 0
-	else:
-		theta0 = params["theta0"]
-		theta1 = params["theta1"]
+    """Main prediction function with interactive input."""
+    params = load_model_params()
+    if not params:
+        theta0 = 0
+        theta1 = 0
+    else:
+        theta0 = params["theta0"]
+        theta1 = params["theta1"]
+        print(f"Model loaded: θ₀={theta0:.6f}, θ₁={theta1:.6f}")
 
-	try:
-		mileage = float(input("Entrez le kilométrage de la voiture: "))
-		price = estimate_price(mileage, theta0, theta1)
-		print(f"Prix estimé pour un kilométrage de {mileage} km: {price:.2f}")
-	except ValueError:
-		print("Erreur: Veuillez entrer un nombre valide.")
+    try:
+        mileage = float(input("Enter the car's mileage (0-1,000,000 km): "))
+
+        if mileage < 0:
+            print("Error: Mileage cannot be negative.")
+            return 1
+
+        price = estimate_price(mileage, theta0, theta1)
+
+        print(f"Estimated price for {mileage:.0f} km: {price:.2f} units")
+        return 0
+    except ValueError as e:
+        if "Invalid" in str(e) or "calculation" in str(e):
+            print(f"Error: {e}")
+        else:
+            print("Error: Please enter a valid number.")
+        return 1
+    except KeyboardInterrupt:
+        print("\nProgram interrupted by user.")
+        return 1
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-	predict()
+    exit(predict())
