@@ -7,10 +7,16 @@ Calculates performance metrics (MSE, R²) on training data with visual display.
 import numpy as np
 import matplotlib.pyplot as plt
 from utils import estimate_price, load_model_params, load_data
+from logging_config import get_logger
+
+# Setup logger for evaluation module
+logger = get_logger(__name__)
 
 
 def calculate_metrics(mileage, price, theta0, theta1):
     """Calculate all evaluation metrics for the model."""
+    logger.debug(f"Calculating metrics for {len(mileage)} data points")
+
     predictions = np.array([estimate_price(x, theta0, theta1) for x in mileage])
     errors = price - predictions
     abs_errors = np.abs(errors)
@@ -28,11 +34,15 @@ def calculate_metrics(mileage, price, theta0, theta1):
     mean_price = np.mean(price)
     mape = np.mean(np.abs(errors / price)) * 100
 
+    logger.debug(f"Metrics calculated: R²={r_squared:.4f}, RMSE={rmse:.2f}, MAE={mae:.2f}, MAPE={mape:.2f}%")
+
     return {"predictions": predictions, "errors": errors, "abs_errors": abs_errors, "mse": mse, "rmse": rmse, "mae": mae, "r_squared": r_squared, "max_error": max_error, "min_error": min_error, "mean_price": mean_price, "mape": mape}
 
 
 def create_visualizations(mileage, price, metrics, theta0, theta1):
     """Create comprehensive visualization dashboard."""
+    logger.debug("Creating evaluation visualizations")
+
     predictions = metrics["predictions"]
     errors = metrics["errors"]
     mse = metrics["mse"]
@@ -112,6 +122,7 @@ def create_visualizations(mileage, price, metrics, theta0, theta1):
     plt.tight_layout()
     plt.subplots_adjust(top=0.90, hspace=0.4, wspace=0.3)
 
+    logger.debug(f"Visualization created with model quality: {quality}")
     return quality
 
 
@@ -121,7 +132,7 @@ def _create_metrics_table(mileage, mse, rmse, mae, r_squared, mape, max_error, m
     ax6.axis("tight")
     ax6.axis("off")
 
-    explanatory_text = "METRIC GUIDE:\n• R² = Variance explained (closer to 1.0 = better)\n• RMSE/MAE = Average prediction errors\n• MAPE = Percentage accuracy\n• MSE = Squared errors (penalizes large errors)"
+    explanatory_text = "Metric guide:\n• R² = Variance explained (closer to 1.0 = better)\n• RMSE/MAE = Average prediction errors\n• MAPE = Percentage accuracy\n• MSE = Squared errors (penalizes large errors)"
     ax6.text(0.5, 0.95, explanatory_text, ha="center", va="top", transform=ax6.transAxes, fontsize=8, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.7))
 
     metrics_data = [
@@ -157,20 +168,18 @@ def print_evaluation_summary(quality, metrics, theta0, theta1):
     mae = metrics["mae"]
     mape = metrics["mape"]
 
-    print("\n" + "=" * 50)
-    print("MODEL EVALUATION SUMMARY")
-    print("=" * 50)
+    print("Model evaluation summary:")
     print(f"* Model accuracy: {quality} (R² = {r_squared:.3f})")
     print(f"* Average error: ±{mae:.0f} price units")
     print(f"* Relative error: {mape:.1f}% on average")
 
     example_km = [50000, 100000, 150000, 200000]
-    print("\nPREDICTION EXAMPLES:")
+    print("\nPredictions example:")
     for km in example_km:
         pred = estimate_price(km, theta0, theta1)
         print(f"   • {km:,} km → {pred:.0f} price units")
 
-    print(f"\nFORMULA: price = {theta0:.0f} + ({theta1:.6f} × mileage)")
+    print(f"\nFormula: price = {theta0:.0f} + ({theta1:.6f} × mileage)")
 
     if r_squared > 0.8:
         print("* This model is sufficiently accurate for reliable predictions")
@@ -179,27 +188,31 @@ def print_evaluation_summary(quality, metrics, theta0, theta1):
     else:
         print("* This model needs improvement (more data, additional variables)")
 
-    print("=" * 50)
-
 
 def evaluate_model(data_file="data.csv"):
     """Evaluate model accuracy on training data and display comprehensive visual metrics."""
+    logger.debug("Starting model evaluation")
+
     params = load_model_params()
     if not params:
+        logger.warning("No trained model found for evaluation")
+        print("Error: No trained model found. Please train the model first.")
         return 1
 
-    print("MODEL PRECISION EVALUATION")
-    print("Loading model and data...")
+    logger.info("MODEL PRECISION EVALUATION")
+    logger.info("Loading model and data...")
 
     theta0 = params["theta0"]
     theta1 = params["theta1"]
+    logger.debug(f"Model parameters loaded: θ₀={theta0:.6f}, θ₁={theta1:.6f}")
 
     mileage, price = load_data(data_file)
     if mileage is None or price is None:
+        logger.error(f"Failed to load data from {data_file}")
         return 1
 
-    print(f"Model loaded: θ₀ = {theta0:.6f}, θ₁ = {theta1:.6f}")
-    print(f"Evaluating on {len(mileage)} data points...")
+    logger.debug(f"Data loaded successfully: {len(mileage)} data points")
+    logger.info(f"Evaluating on {len(mileage)} data points...")
 
     try:
         metrics = calculate_metrics(mileage, price, theta0, theta1)
@@ -209,28 +222,32 @@ def evaluate_model(data_file="data.csv"):
         plt.show()
 
         print_evaluation_summary(quality, metrics, theta0, theta1)
-        print("Evaluation completed! Visual analysis displayed.")
+        logger.info("Evaluation completed! Visual analysis displayed.")
 
+        logger.debug("Model evaluation completed successfully")
         return 0
-
     except Exception as e:
-        print(f"Error during evaluation: {e}")
+        logger.error(f"Error during evaluation: {e}")
+        print("Error: Evaluation failed")
         return 1
 
 
 def main():
     """Main function to evaluate the model and handle errors."""
     try:
-        print("Starting visual model evaluation...")
         result = evaluate_model("data.csv")
         if result == 0:
-            print("Model evaluation completed successfully!")
+            logger.info("Model evaluation completed successfully!")
+        else:
+            logger.warning("Model evaluation completed with warnings/errors")
         return result
     except KeyboardInterrupt:
+        logger.debug("Evaluation interrupted by user")
         print("\nProgram interrupted by user.")
         return 1
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error in evaluation: {e}")
+        print("Error: Unexpected error occurred")
         return 1
 
 

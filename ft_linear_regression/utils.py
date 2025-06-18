@@ -6,6 +6,10 @@ Shared functions used across train.py, predict.py, and evaluate.py.
 
 import json
 import numpy as np
+from logging_config import get_logger
+
+# Setup logger for utils module
+logger = get_logger(__name__)
 
 
 def estimate_price(mileage, theta0, theta1):
@@ -32,18 +36,19 @@ def load_model_params(filename="model_params.json"):
             params = json.load(f)
 
         if "theta0" not in params or "theta1" not in params:
-            print("Error: Invalid model file - missing required parameters")
+            logger.error("Invalid model file - missing required parameters")
             return None
 
+        logger.debug(f"Model parameters loaded from {filename}")
         return params
     except FileNotFoundError:
-        print("Error: Model parameters file not found. Please train the model first.")
+        logger.debug(f"Model parameters file '{filename}' not found")
         return None
     except json.JSONDecodeError:
-        print("Error: Invalid JSON format in model file")
+        logger.error("Invalid JSON format in model file")
         return None
     except Exception as e:
-        print(f"Error loading model parameters: {e}")
+        logger.error(f"Error loading model parameters: {e}")
         return None
 
 
@@ -60,12 +65,14 @@ def load_data(data_file="data.csv", for_training=False):
             raise ValueError(error_msg)
 
         if for_training:
-            print(f"Data loaded: {len(mileage)} samples")
+            logger.info(f"Training data loaded: {len(mileage)} samples")
+        else:
+            logger.debug(f"Data loaded: {len(mileage)} samples")
 
         return mileage, price
     except FileNotFoundError:
-        print(f"Error: Data file '{data_file}' not found")
+        logger.error(f"Data file '{data_file}' not found")
         return None, None
     except Exception as e:
-        print(f"Error loading data: {e}")
+        logger.error(f"Error loading data: {e}")
         return None, None

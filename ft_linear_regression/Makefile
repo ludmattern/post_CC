@@ -1,46 +1,95 @@
-# Makefile pour le projet de régression linéaire
+# Makefile for Linear Regression Project
 
-# Variables
 PYTHON = python3
-TRAIN = train.py
-PREDICT = predict.py
-EVALUATE = evaluate.py
+TRAIN_SCRIPT = train.py
+PREDICT_SCRIPT = predict.py
+EVALUATE_SCRIPT = evaluate.py
+UTILS = utils.py
 DATA = data.csv
-OUTPUT = model_params.json
-PLOT = regression_plot.png
+MODEL = model_params.json
+REQUIREMENTS = requirements.txt
 
-# Règles
-.PHONY: all train predict evaluate clean
+TRAIN_SOURCES = $(TRAIN_SCRIPT) $(UTILS) $(DATA)
 
-# Règle par défaut - affiche l'aide
+.PHONY: all train predict evaluate run clean help install fclean re
+
 all: help
 
-# Entraîner le modèle
-train:
-	$(PYTHON) $(TRAIN)
+install:
+	@if [ -f $(REQUIREMENTS) ]; then \
+		echo "Installing Python dependencies..."; \
+		$(PYTHON) -m pip install -r $(REQUIREMENTS); \
+	else \
+		echo "No requirements.txt found. Ensuring basic dependencies..."; \
+		$(PYTHON) -c "import numpy, matplotlib" 2>/dev/null || \
+		$(PYTHON) -m pip install numpy matplotlib; \
+	fi
 
-# Faire des prédictions
-predict:
-	$(PYTHON) $(PREDICT)
+$(MODEL): $(TRAIN_SOURCES)
+	@echo "Training model..."
+	$(PYTHON) $(TRAIN_SCRIPT)
 
-# Évaluer la précision du modèle
-evaluate:
-	$(PYTHON) $(EVALUATE)
+train: $(MODEL)
 
-# Exécuter toutes les étapes dans l'ordre
-run: train predict evaluate
+predict: $(MODEL)
+	@echo "Starting prediction program..."
+	$(PYTHON) $(PREDICT_SCRIPT)
 
-# Nettoyer les fichiers générés
-clean:
-	rm -f $(OUTPUT) $(PLOT)
+evaluate: $(MODEL)
+	@echo "Evaluating model accuracy..."
+	$(PYTHON) $(EVALUATE_SCRIPT)
 
-# Afficher l'aide
-help:
-	@echo "Utilisation du Makefile pour le projet de régression linéaire :"
+run: train
+	@echo "Running prediction..."
+	@echo "42000" | $(PYTHON) $(PREDICT_SCRIPT) || true
 	@echo ""
-	@echo "  make train     - Entraîne le modèle sur les données"
-	@echo "  make predict   - Fait des prédictions avec le modèle entraîné"
-	@echo "  make evaluate  - Évalue la précision du modèle"
-	@echo "  make run       - Exécute toutes les étapes dans l'ordre"
-	@echo "  make clean     - Supprime les fichiers générés (modèle et graphique)"
-	@echo "  make help      - Affiche cette aide"
+	@echo "Running evaluation..."
+	@$(PYTHON) $(EVALUATE_SCRIPT)
+
+test: $(MODEL)
+	@echo "Testing model with sample inputs..."
+	@echo "50000" | $(PYTHON) $(PREDICT_SCRIPT)
+	@echo "100000" | $(PYTHON) $(PREDICT_SCRIPT)
+	@echo "200000" | $(PYTHON) $(PREDICT_SCRIPT)
+
+clean:
+	@echo "Cleaning generated files..."
+	rm -f $(MODEL)
+	find . -name "*.pyc" -delete
+	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
+fclean: clean
+	@echo "Full clean..."
+	rm -f *.png *.jpg *.pdf
+	rm -rf .pytest_cache/ .coverage htmlcov/
+
+re: fclean train
+
+check:
+	@echo "Checking project files..."
+	@for file in $(TRAIN_SCRIPT) $(PREDICT_SCRIPT) $(EVALUATE_SCRIPT) $(UTILS) $(DATA); do \
+		if [ ! -f $$file ]; then \
+			echo "ERROR: Missing file: $$file"; \
+			exit 1; \
+		else \
+			echo "✓ $$file"; \
+		fi; \
+	done
+	@echo "All required files present."
+
+help:
+	@echo "Linear Regression Project Makefile"
+	@echo ""
+	@echo "Available targets:"
+	@echo "  make install   - Install Python dependencies"
+	@echo "  make train     - Train the linear regression model"
+	@echo "  make predict   - Run prediction program (interactive)"
+	@echo "  make evaluate  - Evaluate model accuracy with metrics"
+	@echo "  make run       - Full pipeline: train + predict + evaluate"
+	@echo "  make test      - Test model with sample inputs"
+	@echo "  make check     - Verify all required files exist"
+	@echo "  make clean     - Remove generated files (model, cache)"
+	@echo "  make fclean    - Full clean (including plots)"
+	@echo "  make re        - Rebuild from scratch (fclean + train)"
+	@echo "  make help      - Show this help message"
+	@echo ""

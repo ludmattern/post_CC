@@ -8,6 +8,10 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 from utils import load_data
+from logging_config import get_logger
+
+# Setup logger for training module
+logger = get_logger(__name__)
 
 
 class ManualScaler:
@@ -38,7 +42,7 @@ class LinearRegression:
         if learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
         if learning_rate > 1.0:
-            print(f"High learning rate ({learning_rate}), risk of divergence")
+            logger.warning(f"High learning rate ({learning_rate}), risk of divergence")
 
         self.learning_rate = learning_rate
         self.n_iterations = n_iterations
@@ -73,7 +77,7 @@ class LinearRegression:
         X_norm, y_norm = self._normalize_data(X, y)
         m = len(X)
         if verbose:
-            print(f"Training on {m} samples...")
+            logger.info(f"Training on {m} samples...")
 
         prev_cost, tolerance = float("inf"), 1e-6
 
@@ -94,24 +98,17 @@ class LinearRegression:
 
             if not (np.isfinite(self.theta0) and np.isfinite(self.theta1)):
                 if verbose:
-                    print(f"Divergence detected - LR too high: {self.learning_rate}")
+                    logger.error(f"Divergence detected - LR too high: {self.learning_rate}")
                 raise ValueError("Numerical divergence")
 
             cost = np.mean(errors**2) / 2
             if not np.isfinite(cost):
-                if verbose:
-                    print("Infinite cost detected")
+                logger.error("Infinite cost detected during training")
                 raise ValueError("Infinite cost")
 
             self.cost_history.append(cost)
 
-            should_store = (
-                i == 0
-                or (i < 10 and i % 2 == 0)
-                or (i < 50 and i % 5 == 0)
-                or (i < 200 and i % 20 == 0)
-                or (i % 50 == 0)
-            )
+            should_store = i == 0 or (i < 10 and i % 2 == 0) or (i < 50 and i % 5 == 0) or (i < 200 and i % 20 == 0) or (i % 50 == 0)
 
             if should_store:
                 current_theta0, current_theta1 = self._denormalize_parameters()
@@ -119,12 +116,11 @@ class LinearRegression:
 
             if abs(prev_cost - cost) < tolerance:
                 if verbose:
-                    print(f"Converged after {i + 1} iterations")
+                    logger.info(f"Converged after {i + 1} iterations")
                 break
             prev_cost = cost
         else:
-            if verbose:
-                print(f"Completed {self.n_iterations} iterations")
+            logger.info(f"Training completed: {self.n_iterations} iterations")
 
         self.theta0_final, self.theta1_final = self._denormalize_parameters()
 
@@ -143,6 +139,7 @@ class LinearRegression:
         params = {"theta0": float(self.theta0_final), "theta1": float(self.theta1_final)}
         with open(filename, "w") as f:
             json.dump(params, f, indent=2)
+        logger.info(f"Model saved to {filename}")
 
     def plot_results(self, X, y):
         """Plot training results: regression line, cost convergence, and training evolution."""
@@ -223,7 +220,7 @@ def calculate_metrics(model, mileage, price):
 def optimize_hyperparameters(mileage, price):
     """Find optimal learning rate through grid search."""
     learning_rates = [0.001, 0.01, 0.05, 0.1, 0.2, 0.5]
-    print("Optimizing hyperparameters...")
+    logger.info("Optimizing hyperparameters...")
 
     best_lr, best_score = 0.01, -1
 
@@ -240,7 +237,7 @@ def optimize_hyperparameters(mileage, price):
         except Exception:
             continue
 
-    print(f"Best learning rate found: {best_lr} (Score = {best_score:.4f})")
+    logger.info(f"Best learning rate found: {best_lr} (Score = {best_score:.4f})")
     return best_lr
 
 
@@ -248,13 +245,16 @@ def train_model(data_file):
     """Train linear regression model with automatic hyperparameter optimization."""
     mileage, price = load_data(data_file, for_training=True)
 
+    if mileage is None or price is None:
+        raise ValueError("Failed to load training data")
+
     if np.any(mileage < 0):
-        print("Negative mileage detected")
+        raise ValueError("Invalid data: negative mileage values")
     if np.any(price <= 0):
-        print("Negative or zero price detected")
+        raise ValueError("Invalid data: non-positive price values")
 
     best_lr = optimize_hyperparameters(mileage, price)
-    print(f"Training model with learning rate {best_lr}...")
+    logger.info(f"Training model with learning rate {best_lr}...")
     model = LinearRegression(learning_rate=best_lr, n_iterations=1000)
     model.fit(mileage, price)
 
@@ -264,7 +264,7 @@ def train_model(data_file):
     return model.theta0_final, model.theta1_final
 
 
-def main():
+def train():
     """Main function to train the model and handle errors."""
     try:
         theta0, theta1 = train_model("data.csv")
@@ -274,12 +274,14 @@ def main():
         print("Use 'python evaluate.py' to calculate precision metrics.")
         return 0
     except FileNotFoundError:
-        print("File data.csv not found")
+        logger.error("Training data file 'data.csv' not found")
+        print("Error: File data.csv not found")
         return 1
     except Exception as e:
-        print(f"Training failed: {e}")
+        logger.error(f"Training failed: {e}")
+        print(f"Error: {e}")
         return 1
 
 
 if __name__ == "__main__":
-    exit(main())
+    exit(train())
